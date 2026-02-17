@@ -27,13 +27,13 @@ func Provider() *schema.Provider {
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
-			"data_model_ci": resourceDataModelCi(),
-			"relation":      resourceRelation(),
+			"ucmdb_data_model_ci": resourceDataModelCi(),
+			"ucmdb_relation":      resourceRelation(),
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{
-			"ucmdb_list": dataSourceUcmdbList(),
-			"relation":   dataSourceRelation(),
+			"ucmdb_list":     dataSourceUcmdbList(),
+			"ucmdb_relation": dataSourceRelation(),
 		},
 
 		// initialize shared configuration objects - the SDK client which makes API requests to UCMDB
