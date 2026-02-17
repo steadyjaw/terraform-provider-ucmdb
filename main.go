@@ -7,7 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
-	"github.com/panderosa/terraform-provider-ucmdb/ucmdb"
+	"github.com/steadyjaw/terraform-provider-ucmdb/ucmdb"
 )
 
 func main() {

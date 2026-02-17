@@ -15,7 +15,7 @@ If you're new to the UCMDB, check out Micro Focus [documentation](https://docs.m
 terraform {
   required_providers {
     downtimes = {
-      source = "panderosa/ucmdb"
+      source = "steadyjaw/ucmdb"
       version = "1.0.1"
     }
   }

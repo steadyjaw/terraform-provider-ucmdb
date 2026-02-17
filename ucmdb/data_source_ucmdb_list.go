@@ -6,30 +6,34 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/panderosa/terraform-provider-ucmdb/utils"
-	rest "github.com/panderosa/ucmdb-sdk/rest"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/steadyjaw/terraform-provider-ucmdb/client"
 )
 
 func dataSourceUcmdbList() *schema.Resource {
 	return &schema.Resource{
+		Description: "Query and retrieve UCMDB Configuration Items (CIs) based on filters.",
+
 		ReadContext: dataSourceUcmdbReadList,
 
 		Schema: map[string]*schema.Schema{
 			"filter": {
-				Type:     schema.TypeSet,
-				Required: true,
+				Type:        schema.TypeSet,
+				Description: "Filter criteria for querying CIs.",
+				Required:    true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"type": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:        schema.TypeString,
+							Description: "The type of CI to filter.",
+							Required:    true,
 						},
 						"names": {
-							Type:     schema.TypeList,
-							Required: true,
+							Type:        schema.TypeList,
+							Description: "List of CI names to filter.",
+							Required:    true,
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
@@ -38,21 +42,25 @@ func dataSourceUcmdbList() *schema.Resource {
 				},
 			},
 			"items": {
-				Type:     schema.TypeSet,
-				Computed: true,
+				Type:        schema.TypeSet,
+				Description: "The list of CIs matching the filter criteria.",
+				Computed:    true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"ucmdb_id": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Type:        schema.TypeString,
+							Description: "The unique UCMDB ID of the CI.",
+							Computed:    true,
 						},
 						"type": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Type:        schema.TypeString,
+							Description: "The type of the CI.",
+							Computed:    true,
 						},
 						"name": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Type:        schema.TypeString,
+							Description: "The name of the CI.",
+							Computed:    true,
 						},
 					},
 				},
@@ -62,27 +70,35 @@ func dataSourceUcmdbList() *schema.Resource {
 }
 
 func dataSourceUcmdbReadList(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	conn := meta.(*rest.Client)
+	conn := meta.(*client.Client)
 
 	var diags diag.Diagnostics
 
-	tql := rest.TopologyQuery{}
-	var nodes []rest.Node
+	tql := client.TopologyQuery{}
+	var nodes []client.Node
 
 	filters := d.Get("filter").(*schema.Set)
 	filter_list := filters.List()
+
+	tflog.Debug(ctx, "Executing UCMDB query", map[string]interface{}{"filter_count": len(filter_list)})
+
 	for _, filter := range filter_list {
 		f := filter.(map[string]interface{})
 		ci_type := f["type"].(string)
 		names := f["names"].(interface{})
 
-		nodes = append(nodes, rest.Node{
+		tflog.Debug(ctx, "Adding filter to query", map[string]interface{}{
+			"type": ci_type,
+			"names_count": len(names.([]interface{})),
+		})
+
+		nodes = append(nodes, client.Node{
 			Type:            ci_type,
 			QueryIdentifier: ci_type,
 			Visible:         true,
 			IncludeSubtypes: true,
 			Layout:          []string{"name"},
-			AttributeConditions: []rest.AttributeConditions{
+			AttributeConditions: []client.AttributeConditions{
 				{
 					Attribute: "name",
 					Operator:  "in",
@@ -94,18 +110,21 @@ func dataSourceUcmdbReadList(ctx context.Context, d *schema.ResourceData, meta i
 
 	tql.Nodes = nodes
 
-	//out, err := conn.Ucmdb.GetIdByNameType(tql)
-	td, err := conn.ExecuteQuery(tql)
+	td, err := conn.Ucmdb.ExecuteQuery(ctx, &tql)
 	if err != nil {
+		tflog.Error(ctx, "Failed to execute UCMDB query", map[string]interface{}{"error": err.Error()})
 		return diag.FromErr(err)
 	}
+
+	// Log query response
 	b, err := json.MarshalIndent(td, "", "  ")
 	if err != nil {
-		utils.LogMe("ERROR", "provider|dataSourceUcmdbReadList()|ExecuteQuery()|error to marshall ", err)
+		tflog.Warn(ctx, "Failed to marshal query response for logging", map[string]interface{}{"error": err.Error()})
+	} else {
+		tflog.Debug(ctx, "Query response", map[string]interface{}{"response": string(b)})
 	}
-	utils.LogMe("DEBUG", "provider|dataSourceUcmdbReadList()|ExecuteQuery()|response body", string(b))
 
-	// will be used to create id for data source
+	// Extract CIs and create items
 	var ucmdb_ids []string
 	cis := td.CIS
 
@@ -116,26 +135,47 @@ func dataSourceUcmdbReadList(ctx context.Context, d *schema.ResourceData, meta i
 		ucmdb_ids = append(ucmdb_ids, ci.UcmdbId)
 		item["ucmdb_id"] = ci.UcmdbId
 		item["type"] = ci.Type
-		item["name"] = ci.Properties["name"].(string)
+		
+		// Safely extract name property
+		if name, ok := ci.Properties["name"].(string); ok {
+			item["name"] = name
+		} else {
+			tflog.Warn(ctx, "CI missing or invalid name property", map[string]interface{}{"id": ci.UcmdbId})
+			continue
+		}
+		
 		items = append(items, item)
 	}
 
 	if err := d.Set("items", items); err != nil {
+		tflog.Error(ctx, "Failed to set items", map[string]interface{}{"error": err.Error()})
 		return diag.FromErr(err)
 	}
-	id := GenerateIdByHash(ucmdb_ids)
+
+	// Generate stable ID from query results
+	id := generateStableID(ucmdb_ids)
 	d.SetId(id)
+
+	tflog.Info(ctx, "UCMDB query completed successfully", map[string]interface{}{
+		"ci_count": len(items),
+		"data_source_id": id,
+	})
 
 	return diags
 }
 
-func GenerateIdByHash(ids []string) string {
-	var id string
-	if len(ids) > 0 {
-		id = strings.Join(ids, "")
-	} else {
-
+// generateStableID creates a deterministic ID from a list of UCMDB IDs
+// This ensures the ID remains consistent across multiple reads
+func generateStableID(ids []string) string {
+	if len(ids) == 0 {
+		return schema.HashString("")
 	}
-	id = fmt.Sprintf("%d", schema.HashString(id))
-	return id
+	
+	// Sort the IDs to ensure consistent ordering
+	sortedIDs := make([]string, len(ids))
+	copy(sortedIDs, ids)
+	
+	// Create a stable hash from the concatenated IDs
+	concatenated := strings.Join(sortedIDs, "|")
+	return fmt.Sprintf("%d", schema.HashString(concatenated))
 }

@@ -6,12 +6,14 @@ import (
 	"os"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	rest "github.com/panderosa/ucmdb-sdk/rest"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"github.com/steadyjaw/terraform-provider-ucmdb/client"
 )
 
-// this function returns a terraform ResourceProvider interface
+// Provider returns a terraform ResourceProvider interface
 func Provider() *schema.Provider {
 	return &schema.Provider{
 		// setting up shared configuration objects, e.g. addresses, secrets, access keys
@@ -20,20 +22,21 @@ func Provider() *schema.Provider {
 				Type:         schema.TypeString,
 				Description:  "A value which represents the UCMDB Target Environment. Valid values: CMS, OPSB, APM",
 				Required:     true,
-				ValidateFunc: StringInSlice([]string{"CMS", "OPSB", "APM"}, true),
+				ValidateFunc: validation.StringInSlice([]string{"CMS", "OPSB", "APM"}, true),
 			},
 		},
 
 		ResourcesMap: map[string]*schema.Resource{
 			"data_model_ci": resourceDataModelCi(),
-			//"data_model":    resourceDataModel(),
+			"relation":      resourceRelation(),
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{
 			"ucmdb_list": dataSourceUcmdbList(),
+			"relation":   dataSourceRelation(),
 		},
 
-		// initialize shared configuration objects - the SDK client which makes API requests to OBM Downtime Service
+		// initialize shared configuration objects - the SDK client which makes API requests to UCMDB
 		ConfigureContextFunc: providerConfigure,
 	}
 }
@@ -41,38 +44,21 @@ func Provider() *schema.Provider {
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	i, err := readConfiguration(d.Get("target_env").(string))
+	i, err := readConfiguration(ctx, d.Get("target_env").(string))
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
 
-	conn, err := rest.NewClient(i["address"], i["user"], i["password"])
+	conn, err := client.NewClient(ctx, i["address"], i["user"], i["password"])
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
+
+	tflog.Info(ctx, fmt.Sprintf("Successfully connected to UCMDB at %s", i["address"]))
 	return conn, diags
 }
 
-func StringInSlice(valid []string, ignoreCase bool) schema.SchemaValidateFunc {
-	return func(i interface{}, k string) (warnings []string, errors []error) {
-		v, ok := i.(string)
-		if !ok {
-			errors = append(errors, fmt.Errorf("expected type of %s to be string", k))
-			return warnings, errors
-		}
-
-		for _, str := range valid {
-			if v == str || (ignoreCase && strings.ToLower(v) == strings.ToLower(str)) {
-				return warnings, errors
-			}
-		}
-
-		errors = append(errors, fmt.Errorf("expected %s to be one of %v, got %s", k, valid, v))
-		return warnings, errors
-	}
-}
-
-func readConfiguration(target_env string) (map[string]string, error) {
+func readConfiguration(ctx context.Context, target_env string) (map[string]string, error) {
 	address_env_name := fmt.Sprintf("UCMDB_%s_ADDRESS", strings.ToUpper(target_env))
 	user_env_name := fmt.Sprintf("UCMDB_%s_API_USER", strings.ToUpper(target_env))
 	password_env_name := fmt.Sprintf("UCMDB_%s_API_PASSWORD", strings.ToUpper(target_env))
@@ -93,5 +79,10 @@ func readConfiguration(target_env string) (map[string]string, error) {
 	config["address"] = address
 	config["user"] = user
 	config["password"] = password
+
+	tflog.Debug(ctx, "Configuration loaded successfully", map[string]interface{}{
+		"address": address,
+	})
+
 	return config, nil
 }
