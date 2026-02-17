@@ -7,6 +7,13 @@ require (
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.34.0
 )
 
+// Local development: uses local paths instead of remote modules
+replace (
+	github.com/steadyjaw/terraform-provider-ucmdb => ./
+	github.com/steadyjaw/terraform-provider-ucmdb/client => ./client
+	github.com/steadyjaw/terraform-provider-ucmdb/ucmdb => ./ucmdb
+)
+
 require (
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
