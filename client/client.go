@@ -289,7 +289,7 @@ func (c *Client) makeRequest(ctx context.Context, method, url string, body []byt
 	req.Header.Set("Accept", "application/json")
 
 	// Execute request
-	httpResp, err := c.HTTPClient.(*http.Client).Do(req)
+	httpResp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}

@@ -15,12 +15,14 @@
 // - POST /topology - Execute topology queries
 package client
 
+import "net/http"
+
 // Client represents an UCMDB REST API client
 type Client struct {
 	BaseURL    string
 	Username   string
 	Password   string
-	HTTPClient HTTPClientInterface
+	HTTPClient *http.Client
 	Ucmdb      *UcmdbService
 }
 
@@ -86,11 +88,6 @@ type Relation struct {
 // RelationData represents relation data for create/update operations
 type RelationData struct {
 	Relations []Relation `json:"relations"`
-}
-
-// HTTPClientInterface defines the HTTP client contract
-type HTTPClientInterface interface {
-	Do(req interface{}) (interface{}, error)
 }
 
 // Response represents a generic UCMDB API response
