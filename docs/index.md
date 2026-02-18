@@ -14,7 +14,7 @@ If you're new to the UCMDB, check out Micro Focus [documentation](https://docs.m
 # Configure Terraform
 terraform {
   required_providers {
-    downtimes = {
+    ucmdb = {
       source = "steadyjaw/ucmdb"
       version = "1.0.1"
     }
@@ -22,9 +22,8 @@ terraform {
 }
 
 # Configure Provider options
-provider "downtimes" {
+provider "ucmdb" {
   target_env = "CMS"
-  alias      = "cms"
 }
 
 ````
@@ -35,8 +34,8 @@ provider "downtimes" {
 
     `UCMDB_<target_env>_ADDRESS` - UCMDB REST API url, e.g. `https://<fqdn>:<port>/rest-api`
 
-    `UCMDB_<target_env>_CMS_USER` - UCMDB REST API username
+    `UCMDB_<target_env>_API_USER` - UCMDB REST API username
 
-    `UCMDB_<target_env>_CMS_PASSWORD` - UCMDB REST API password
+    `UCMDB_<target_env>_API_PASSWORD` - UCMDB REST API password
 
 
